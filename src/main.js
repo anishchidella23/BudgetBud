@@ -2,30 +2,39 @@
 
 import './styles.css';
 
-import { bindForms } from './forms.js';
+import { loadDemoData } from './demo.js';
+import { bindForms, openAddTransaction, renderCategoryOptions } from './forms.js';
 import { bindHome, renderHome } from './render/home.js';
 import { bindSavings, renderSavings } from './render/savings.js';
 import { bindTransactions, renderTransactions } from './render/transactions.js';
-import { load } from './storage.js';
+import { state } from './state.js';
+import { clear, load } from './storage.js';
 import { $, $$ } from './ui/dom.js';
-import { bindModals, openModal } from './ui/modal.js';
+import { bindModals } from './ui/modal.js';
 
 const SCREENS = ['home', 'transactions', 'savings'];
 const TITLES = { home: 'BudgetBud', transactions: 'Transactions', savings: 'Savings' };
 
 let currentTab = 'home';
 
+/** True when there is nothing at all to show — drives the demo-data prompt. */
+const isEmpty = () => state.transactions.length === 0 && state.bills.length === 0 && state.goals.length === 0;
+
 /** Repaint every screen. Cheap at this data size and keeps the tabs in sync. */
 function renderAll() {
     renderHeader();
+    renderCategoryOptions();
     renderHome();
     renderTransactions();
     renderSavings();
+    $('#demoBanner').hidden = !isEmpty();
+    $('#clearDataBtn').hidden = isEmpty();
 }
 
 function renderHeader() {
     $('#exportBtn').style.display = currentTab === 'transactions' ? 'inline-block' : 'none';
-    $('#addBtn').style.display = currentTab === 'home' || currentTab === 'transactions' ? 'inline-block' : 'none';
+    $('#addBtn').style.display =
+        currentTab === 'home' || currentTab === 'transactions' ? 'inline-block' : 'none';
 }
 
 function switchTab(tab) {
@@ -42,19 +51,18 @@ function switchTab(tab) {
         }
     });
     $('#title').textContent = TITLES[tab] || 'BudgetBud';
-    renderHeader();
     renderAll();
 }
 
 function bindShell() {
-    $('#addBtn').addEventListener('click', () => openModal('modalAdd'));
+    $('#addBtn').addEventListener('click', openAddTransaction);
 
     $('.bottom').addEventListener('click', (e) => {
         const tabEl = e.target.closest('.tab');
         const tab = tabEl?.getAttribute('data-tab');
         if (!tab) return;
         // "Add" is an action, not a destination.
-        if (tab === 'add') openModal('modalAdd');
+        if (tab === 'add') openAddTransaction();
         else switchTab(tab);
     });
 
@@ -66,6 +74,17 @@ function bindShell() {
             e.preventDefault();
             tabEl.click();
         });
+    });
+
+    $('#loadDemoBtn').addEventListener('click', () => {
+        loadDemoData();
+        switchTab('home');
+    });
+
+    $('#clearDataBtn').addEventListener('click', () => {
+        if (!confirm('Delete all transactions, bills, and savings goals? This cannot be undone.')) return;
+        clear();
+        switchTab('home');
     });
 }
 

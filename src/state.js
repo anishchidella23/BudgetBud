@@ -1,11 +1,20 @@
 /**
  * Application state and the pure selectors derived from it.
  *
- * Everything below `state` is a plain function of the state object so it can be
- * unit tested without a DOM.
+ * Everything below `state` is a plain function of a state object so it can be
+ * unit tested without a DOM. Mutations live in actions.js.
  */
 
-import { isSameDay, isSameMonth, monthKey, nextMonthKey, parseLocalDate, todayLocalISO } from './utils/date.js';
+import {
+    isSameDay,
+    isSameMonth,
+    monthKey,
+    nextMonthKey,
+    parseLocalDate,
+    todayLocalISO,
+} from './utils/date.js';
+
+export const SCHEMA_VERSION = 2;
 
 export const DEFAULT_CATEGORIES = [
     'Groceries',
@@ -14,19 +23,31 @@ export const DEFAULT_CATEGORIES = [
     'Entertainment',
     'Bills',
     'Income',
+    'Savings',
     'Other',
 ];
 
+let idCounter = 0;
+
+/** Stable id for a record. Crypto-backed where available, counter otherwise. */
+export function newId() {
+    if (typeof globalThis.crypto?.randomUUID === 'function') return globalThis.crypto.randomUUID();
+    idCounter += 1;
+    return `id-${Date.now()}-${idCounter}`;
+}
+
 export function createDefaultState() {
     return {
+        version: SCHEMA_VERSION,
         monthlyBudget: 3000,
         period: 'month',
         viewDate: todayLocalISO(),
-        transactions: [],
         categories: [...DEFAULT_CATEGORIES],
+        transactions: [],
         bills: [],
         goals: [],
-        savingsHistory: [],
+        /** Money moved into a goal: {id, goalId, amount, date}. */
+        contributions: [],
     };
 }
 
@@ -36,6 +57,46 @@ export let state = createDefaultState();
 export function replaceState(next) {
     state = next;
     return state;
+}
+
+/**
+ * Bring a persisted state object up to the current schema.
+ *
+ * v1 stored `goal.saved` alongside a separate `savingsHistory` running total,
+ * which let the two drift apart — deleting a goal left its money in the chart
+ * forever. v2 keeps a contribution log and derives both from it.
+ */
+export function migrate(raw, today = new Date()) {
+    const base = createDefaultState();
+    if (!raw || typeof raw !== 'object') return base;
+
+    const next = { ...base, ...raw, version: SCHEMA_VERSION };
+
+    next.transactions = (raw.transactions ?? []).map((t) => ({ ...t, id: t.id ?? newId() }));
+    next.bills = (raw.bills ?? []).map((b) => ({ ...b, id: b.id ?? newId() }));
+
+    if (raw.version === SCHEMA_VERSION && Array.isArray(raw.contributions)) {
+        next.goals = (raw.goals ?? []).map((g) => ({ ...g, id: g.id ?? newId() }));
+        next.contributions = raw.contributions.map((c) => ({ ...c, id: c.id ?? newId() }));
+        return next;
+    }
+
+    // v1 -> v2: fold each goal's stored balance into a single contribution.
+    // The per-month breakdown in v1's savingsHistory can't be attributed back
+    // to individual goals, so the series is rebuilt from goal balances instead.
+    const seededDate = `${monthKey(today)}-01`;
+    next.goals = [];
+    next.contributions = [];
+    (raw.goals ?? []).forEach((g) => {
+        const id = g.id ?? newId();
+        const { saved, ...rest } = g;
+        next.goals.push({ ...rest, id });
+        if (saved > 0) {
+            next.contributions.push({ id: newId(), goalId: id, amount: saved, date: seededDate });
+        }
+    });
+    delete next.savingsHistory;
+    return next;
 }
 
 /**
@@ -70,9 +131,8 @@ export function spendingByCategory(s = state) {
 
 /** Filter + sort for the transactions screen. `mode` is 'date' or 'amount'. */
 export function filterTransactions(s, { query = '', category = '', mode = 'date' } = {}) {
-    const q = query.toLowerCase();
+    const q = query.trim().toLowerCase();
     return s.transactions
-        .map((t, index) => ({ ...t, index }))
         .filter(
             (t) =>
                 (!q || t.name.toLowerCase().includes(q) || t.category.toLowerCase().includes(q)) &&
@@ -85,34 +145,58 @@ export function filterTransactions(s, { query = '', category = '', mode = 'date'
         );
 }
 
-/**
- * Pad the savings history forward to the current month, carrying the running
- * total across untouched months. Entries are keyed "YYYY-MM" so the series
- * stays ordered across a year boundary.
- */
-export function extendHistoryToCurrent(history, today = new Date()) {
-    const current = monthKey(today);
-    if (!history.length) return [{ month: current, saved: 0 }];
-
-    const out = history.map((h) => ({ ...h }));
-    let last = out[out.length - 1].month;
-    // Guard against a corrupted trailing key rather than looping forever.
-    let guard = 0;
-    while (last < current && guard++ < 600) {
-        last = nextMonthKey(last);
-        out.push({ month: last, saved: out[out.length - 1].saved });
-    }
-    return out;
+/** What a goal has accumulated, derived from its contributions. */
+export function goalSaved(s, goalId) {
+    return s.contributions.filter((c) => c.goalId === goalId).reduce((sum, c) => sum + c.amount, 0);
 }
 
 export function totalSaved(s = state) {
-    return s.goals.reduce((sum, g) => sum + g.saved, 0);
+    return s.contributions.reduce((sum, c) => sum + c.amount, 0);
 }
 
-/** Rows in CSV order, header included. */
-export function transactionsToCsv(s = state) {
+/**
+ * Cumulative savings by month for the line chart, as [{month, saved}].
+ *
+ * Months with no contributions still need a point, otherwise the chart draws a
+ * straight line between distant months and implies steady saving that didn't
+ * happen — so gaps carry the running total forward.
+ */
+export function savingsSeries(s = state, today = new Date()) {
+    const current = monthKey(today);
+    const byMonth = {};
+    s.contributions.forEach((c) => {
+        const key = c.date.slice(0, 7);
+        byMonth[key] = (byMonth[key] || 0) + c.amount;
+    });
+
+    const months = Object.keys(byMonth).sort();
+    if (!months.length) return [{ month: current, saved: 0 }];
+
+    const out = [];
+    let running = 0;
+    let cursor = months[0];
+    // Walk month by month from the first contribution to today, filling gaps.
+    let guard = 0;
+    while (cursor <= current && guard++ < 600) {
+        running += byMonth[cursor] ?? 0;
+        out.push({ month: cursor, saved: running });
+        cursor = nextMonthKey(cursor);
+    }
+    // Contributions dated in the future still belong on the chart.
+    months
+        .filter((m) => m > current)
+        .forEach((m) => {
+            running += byMonth[m];
+            out.push({ month: m, saved: running });
+        });
+    return out;
+}
+
+/** Rows in CSV order, header included. Pass a filtered list to export a subset. */
+export function transactionsToCsv(txns) {
+    const list = Array.isArray(txns) ? txns : txns.transactions;
     const rows = [['date', 'name', 'category', 'amount', 'note']].concat(
-        s.transactions.map((t) => [t.date, t.name, t.category, t.amount, t.note || ''])
+        list.map((t) => [t.date, t.name, t.category, t.amount, t.note || ''])
     );
     return rows.map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
 }

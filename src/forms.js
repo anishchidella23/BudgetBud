@@ -1,60 +1,136 @@
 /** Modal form submissions: transactions, savings, goals, bills, budget. */
 
-import { extendHistoryToCurrent, state } from './state.js';
-import { save } from './storage.js';
+import {
+    addBill,
+    addCategory,
+    addContribution,
+    addGoal,
+    addTransaction,
+    getTransaction,
+    setMonthlyBudget,
+    updateTransaction,
+} from './actions.js';
+import { state } from './state.js';
 import { $ } from './ui/dom.js';
-import { closeModal } from './ui/modal.js';
+import { closeModal, openModal } from './ui/modal.js';
 import { todayLocalISO } from './utils/date.js';
 import { escapeHtml } from './utils/format.js';
 
+/** Sentinel option that swaps the category select for a free-text field. */
+const NEW_CATEGORY = '__new__';
+
+/** id of the transaction being edited, or null when adding. */
+let editingId = null;
+
+export function renderCategoryOptions() {
+    const options =
+        state.categories.map((c) => `<option>${escapeHtml(c)}</option>`).join('') +
+        `<option value="${NEW_CATEGORY}">+ New category…</option>`;
+
+    const select = $('#categoryInput');
+    const previous = select.value;
+    select.innerHTML = options;
+    if (state.categories.includes(previous)) select.value = previous;
+}
+
+function toggleNewCategoryField() {
+    const isNew = $('#categoryInput').value === NEW_CATEGORY;
+    const field = $('#newCategoryInput');
+    field.hidden = !isNew;
+    field.required = isNew;
+    if (isNew) field.focus();
+    else field.value = '';
+}
+
+/** Resolve the chosen category, creating it first if the user typed a new one. */
+function resolveCategory() {
+    if ($('#categoryInput').value !== NEW_CATEGORY) return $('#categoryInput').value;
+    const created = addCategory($('#newCategoryInput').value);
+    if (created) renderCategoryOptions();
+    return created;
+}
+
+function resetAddForm() {
+    $('#titleInput').value = '';
+    $('#amountInput').value = '';
+    $('#noteInput').value = '';
+    $('#dateInput').value = todayLocalISO();
+    $('#newCategoryInput').value = '';
+    $('#newCategoryInput').hidden = true;
+    $('#newCategoryInput').required = false;
+}
+
+/** Open the shared sheet in "add" mode. */
+export function openAddTransaction() {
+    editingId = null;
+    renderCategoryOptions();
+    resetAddForm();
+    $('#addModalTitle').textContent = 'Add Transaction';
+    $('#addSubmitBtn').textContent = 'Add';
+    $('#clearBtn').hidden = false;
+    openModal('modalAdd');
+}
+
+/** Open the same sheet prefilled, to edit an existing transaction. */
+export function openEditTransaction(id) {
+    const txn = getTransaction(id);
+    if (!txn) return;
+    editingId = id;
+    renderCategoryOptions();
+    resetAddForm();
+
+    $('#titleInput').value = txn.name;
+    $('#amountInput').value = String(txn.amount);
+    $('#dateInput').value = txn.date;
+    $('#noteInput').value = txn.note || '';
+    if (state.categories.includes(txn.category)) $('#categoryInput').value = txn.category;
+
+    $('#addModalTitle').textContent = 'Edit Transaction';
+    $('#addSubmitBtn').textContent = 'Save';
+    $('#clearBtn').hidden = true;
+    openModal('modalAdd');
+}
+
 export function bindForms({ rerender, switchTab }) {
-    $('#categoryInput').innerHTML = state.categories.map((c) => `<option>${escapeHtml(c)}</option>`).join('');
+    renderCategoryOptions();
     $('#dateInput').value = todayLocalISO();
 
-    $('#clearBtn').addEventListener('click', () => {
-        $('#titleInput').value = '';
-        $('#amountInput').value = '';
-        $('#noteInput').value = '';
-    });
+    $('#categoryInput').addEventListener('change', toggleNewCategoryField);
+    $('#clearBtn').addEventListener('click', resetAddForm);
 
     $('#addForm').addEventListener('submit', (e) => {
         e.preventDefault();
         const name = $('#titleInput').value.trim();
         const amount = parseFloat($('#amountInput').value);
-        if (!name || Number.isNaN(amount)) return;
+        const category = resolveCategory();
+        if (!name || Number.isNaN(amount) || !category) return;
 
-        state.transactions.push({
+        const fields = {
             name,
             amount,
-            category: $('#categoryInput').value,
+            category,
             date: $('#dateInput').value || todayLocalISO(),
             note: $('#noteInput').value.trim(),
-        });
-        save();
+        };
 
-        $('#titleInput').value = '';
-        $('#amountInput').value = '';
-        $('#noteInput').value = '';
+        if (editingId) updateTransaction(editingId, fields);
+        else addTransaction(fields);
+
+        const wasEditing = editingId !== null;
+        editingId = null;
+        resetAddForm();
         closeModal('modalAdd');
         rerender();
-        switchTab('transactions');
+        if (!wasEditing) switchTab('transactions');
     });
 
     $('#addSavingForm').addEventListener('submit', (e) => {
         e.preventDefault();
-        const goalId = parseInt($('#goalSelect').value, 10);
+        const goalId = $('#goalSelect').value;
         const amount = parseFloat($('#saveAmount').value);
-        if (Number.isNaN(goalId) || Number.isNaN(amount) || amount <= 0) return;
+        if (!goalId || Number.isNaN(amount) || amount <= 0) return;
 
-        const goal = state.goals.find((g) => g.id === goalId);
-        if (!goal) return;
-        goal.saved += amount;
-
-        // Credit the contribution to the current month's bucket.
-        state.savingsHistory = extendHistoryToCurrent(state.savingsHistory);
-        state.savingsHistory[state.savingsHistory.length - 1].saved += amount;
-        save();
-
+        addContribution(goalId, amount);
         $('#saveAmount').value = '';
         closeModal('modalAddSaving');
         rerender();
@@ -68,8 +144,7 @@ export function bindForms({ rerender, switchTab }) {
         const due = $('#goalDue').value || todayLocalISO();
         if (!name || Number.isNaN(target) || target <= 0) return;
 
-        state.goals.push({ id: Date.now(), name, target, saved: 0, due });
-        save();
+        addGoal({ name, target, due });
         closeModal('modalNewGoal');
         rerender();
         switchTab('savings');
@@ -82,9 +157,7 @@ export function bindForms({ rerender, switchTab }) {
         const due = $('#billDue').value || todayLocalISO();
         if (!name || Number.isNaN(amount) || amount <= 0) return;
 
-        state.bills.push({ name, amount, due, paid: false });
-        save();
-
+        addBill({ name, amount, due });
         $('#billName').value = '';
         $('#billAmount').value = '';
         closeModal('modalAddBill');
@@ -96,8 +169,7 @@ export function bindForms({ rerender, switchTab }) {
         e.preventDefault();
         const val = Math.floor(parseFloat($('#budgetInput').value));
         if (Number.isNaN(val)) return;
-        state.monthlyBudget = Math.max(0, val);
-        save();
+        setMonthlyBudget(val);
         closeModal('modalEditBudget');
         rerender();
     });

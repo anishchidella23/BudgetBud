@@ -547,3 +547,95 @@ svg text {
 .bills-hr {
     margin: 8px 0 14px;
 }
+
+/* ---------------------------------------------------------------- additions */
+
+/* An author rule that sets `display` beats the UA stylesheet's [hidden]
+   rule, so .demo-banner's flex layout kept it on screen after it was hidden.
+   Make the attribute win everywhere. */
+[hidden] {
+    display: none !important;
+}
+
+.empty {
+    padding: 14px 4px;
+    color: var(--muted-2);
+    font-size: 15px;
+    text-align: center;
+}
+
+.demo-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+}
+
+.data-tools {
+    display: flex;
+    justify-content: center;
+    padding: 16px 0 4px;
+}
+
+.section-total {
+    float: right;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--muted-2);
+}
+
+td.actions {
+    white-space: nowrap;
+}
+
+td.actions .pill {
+    margin-left: 4px;
+}
+
+button[disabled] {
+    opacity: .5;
+    cursor: not-allowed;
+}
+
+/*
+ * The prototype was a fixed 640x960 mock-up, so on any window shorter than the
+ * frame the bottom tab bar sat below the fold and could not be reached. The
+ * frame is now a maximum rather than a fixed size: it stays a phone on a large
+ * screen and fills the viewport on anything smaller.
+ */
+.device {
+    width: min(640px, 100vw);
+    height: min(960px, 100vh - 48px);
+}
+
+/* Below phone width the frame stops pretending to be a phone and just fills
+   the screen; on a short laptop the height clamp above already keeps the tab
+   bar on screen, so the frame is kept there. */
+@media (max-width: 700px) {
+    .device {
+        width: 100vw;
+        height: 100vh;
+        height: 100dvh;
+        margin: 0;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+    }
+}
+
+@media (max-width: 560px) {
+    .spending-chart-container {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .goal-header {
+        grid-template-columns: 1fr auto;
+    }
+
+    .goal-title {
+        grid-column: 1 / -1;
+    }
+}

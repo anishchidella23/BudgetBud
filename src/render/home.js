@@ -1,11 +1,12 @@
 /** Home screen: balance, monthly budget, bills, category chart, recent activity. */
 
+import { removeBill, removeTransaction, setBillPaid, setPeriod, setViewDate } from '../actions.js';
 import { drawDonutWithLeaders } from '../charts/donut.js';
 import { sliceColor } from '../charts/svg.js';
 import { computeTotals, spendingByCategory, state } from '../state.js';
-import { save } from '../storage.js';
 import { $ } from '../ui/dom.js';
 import { openModal } from '../ui/modal.js';
+import { openEditTransaction } from '../forms.js';
 import { addDaysLocalISO, addMonthsLocalISO, parseLocalDate, todayLocalISO } from '../utils/date.js';
 import { escapeHtml, fmt, fmt2 } from '../utils/format.js';
 
@@ -13,13 +14,12 @@ let onChange = () => {};
 
 function shiftView(delta) {
     const today = parseLocalDate(todayLocalISO());
-    state.viewDate =
+    const next =
         state.period === 'month'
             ? addMonthsLocalISO(state.viewDate, delta)
             : addDaysLocalISO(state.viewDate, delta);
     // Never navigate into the future.
-    if (parseLocalDate(state.viewDate) > today) state.viewDate = todayLocalISO();
-    save();
+    setViewDate(parseLocalDate(next) > today ? todayLocalISO() : next);
     onChange();
 }
 
@@ -29,8 +29,7 @@ export function bindHome(rerender) {
     $('#prevPeriod').addEventListener('click', () => shiftView(-1));
     $('#nextPeriod').addEventListener('click', () => shiftView(1));
     $('#togglePeriod').addEventListener('click', () => {
-        state.period = state.period === 'month' ? 'day' : 'month';
-        save();
+        setPeriod(state.period === 'month' ? 'day' : 'month');
         onChange();
     });
 
@@ -44,32 +43,39 @@ export function bindHome(rerender) {
     $('#billsList').addEventListener('click', (e) => {
         const toggle = e.target.closest('[data-toggle-bill]');
         if (toggle) {
-            const bill = state.bills[+toggle.dataset.toggleBill];
-            bill.paid = !bill.paid;
-            save();
+            const bill = state.bills.find((b) => b.id === toggle.dataset.toggleBill);
+            if (bill) setBillPaid(bill.id, !bill.paid);
             onChange();
             return;
         }
         const del = e.target.closest('[data-del-bill]');
         if (del) {
-            const idx = +del.dataset.delBill;
-            const bill = state.bills[idx];
-            if (confirm(`Remove bill "${bill.name}" for $${fmt(bill.amount)}?`)) {
-                state.bills.splice(idx, 1);
-                save();
+            const bill = state.bills.find((b) => b.id === del.dataset.delBill);
+            if (!bill) return;
+            const extra = bill.paid ? ' This also removes its payment from your transactions.' : '';
+            if (confirm(`Remove bill "${bill.name}" for $${fmt(bill.amount)}?${extra}`)) {
+                removeBill(bill.id);
                 onChange();
             }
         }
     });
 
     $('#recentTbody').addEventListener('click', (e) => {
+        const edit = e.target.closest('[data-edit]');
+        if (edit) {
+            openEditTransaction(edit.dataset.edit);
+            return;
+        }
         const del = e.target.closest('[data-del]');
         if (!del) return;
-        const idx = +del.dataset.del;
-        const tx = state.transactions[idx];
-        if (confirm(`Remove "${tx.name}" on ${parseLocalDate(tx.date).toLocaleDateString()} for ${fmt2(tx.amount)}?`)) {
-            state.transactions.splice(idx, 1);
-            save();
+        const txn = state.transactions.find((t) => t.id === del.dataset.del);
+        if (!txn) return;
+        if (
+            confirm(
+                `Remove "${txn.name}" on ${parseLocalDate(txn.date).toLocaleDateString()} for ${fmt2(txn.amount)}?`
+            )
+        ) {
+            removeTransaction(txn.id);
             onChange();
         }
     });
@@ -93,25 +99,25 @@ export function renderHome() {
 }
 
 function renderBills() {
-    const list = $('#billsList');
-    list.innerHTML = state.bills
+    $('#billsList').innerHTML = state.bills
         .map(
-            (b, i) => `
+            (b) => `
       <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
         <div>
           <div><strong>${escapeHtml(b.name)}</strong> · $${fmt(b.amount)}</div>
           <div class="subtle">${parseLocalDate(b.due).toLocaleDateString()}</div>
         </div>
         <div class="row" style="gap:8px; align-items:center;">
-          <button class="pill ${b.paid ? 'paid' : 'action'}" data-toggle-bill="${i}" title="${b.paid ? 'Mark unpaid' : 'Mark paid'}">
+          <button class="pill ${b.paid ? 'paid' : 'action'}" data-toggle-bill="${b.id}" title="${b.paid ? 'Mark unpaid' : 'Mark paid'}">
             ${b.paid ? 'Paid' : 'Mark paid'}
           </button>
-          <button class="pill danger" data-del-bill="${i}" title="Remove bill">🗑</button>
+          <button class="pill danger" data-del-bill="${b.id}" title="Remove bill">🗑</button>
         </div>
       </div>`
         )
         .join('');
 
+    $('#billsEmpty').hidden = state.bills.length > 0;
     $('#billsCount').textContent = `${state.bills.filter((b) => !b.paid).length} due`;
 }
 
@@ -149,10 +155,8 @@ function renderCategoryChart() {
 }
 
 function renderRecent() {
-    $('#recentTbody').innerHTML = state.transactions
-        .map((t, index) => ({ ...t, index }))
-        .slice(-10)
-        .reverse()
+    const recent = [...state.transactions].slice(-10).reverse();
+    $('#recentTbody').innerHTML = recent
         .map(
             (t) => `
       <tr>
@@ -160,8 +164,13 @@ function renderRecent() {
         <td>${escapeHtml(t.name)}</td>
         <td>${escapeHtml(t.category)}</td>
         <td class="right ${t.amount < 0 ? 'money-neg' : 'money-pos'}">${fmt2(t.amount)}</td>
-        <td class="actions"><button class="pill danger" data-del="${t.index}" title="Remove transaction">🗑</button></td>
+        <td class="actions">
+          <button class="pill" data-edit="${t.id}" title="Edit transaction">✎</button>
+          <button class="pill danger" data-del="${t.id}" title="Remove transaction">🗑</button>
+        </td>
       </tr>`
         )
         .join('');
+
+    $('#recentEmpty').hidden = recent.length > 0;
 }

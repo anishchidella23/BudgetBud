@@ -1,9 +1,9 @@
 /** Savings screen: goal cards with progress, and the savings-over-time chart. */
 
+import { removeGoal } from '../actions.js';
 import { drawLineChart } from '../charts/line.js';
 import { sliceColor } from '../charts/svg.js';
-import { extendHistoryToCurrent, state } from '../state.js';
-import { save } from '../storage.js';
+import { goalSaved, savingsSeries, state, totalSaved } from '../state.js';
 import { $ } from '../ui/dom.js';
 import { openModal } from '../ui/modal.js';
 import { parseLocalDate, todayLocalISO } from '../utils/date.js';
@@ -31,11 +31,12 @@ export function bindSavings(rerender) {
     $('#goals').addEventListener('click', (e) => {
         const del = e.target.closest('[data-del-goal]');
         if (!del) return;
-        const id = Number(del.dataset.delGoal);
-        const goal = state.goals.find((g) => g.id === id);
-        if (goal && confirm(`Remove goal "${goal.name}"?`)) {
-            state.goals = state.goals.filter((g) => g.id !== id);
-            save();
+        const goal = state.goals.find((g) => g.id === del.dataset.delGoal);
+        if (!goal) return;
+        const saved = goalSaved(state, goal.id);
+        const extra = saved > 0 ? ` Its $${fmt(saved)} in contributions will be removed too.` : '';
+        if (confirm(`Remove goal "${goal.name}"?${extra}`)) {
+            removeGoal(goal.id);
             onChange();
         }
     });
@@ -44,7 +45,8 @@ export function bindSavings(rerender) {
 export function renderSavings() {
     $('#goals').innerHTML = state.goals
         .map((g, i) => {
-            const pct = g.target > 0 ? Math.min(100, Math.round((g.saved * 100) / g.target)) : 0;
+            const saved = goalSaved(state, g.id);
+            const pct = g.target > 0 ? Math.min(100, Math.round((saved * 100) / g.target)) : 0;
             return `
         <div class="card goal">
           <div class="goal-header">
@@ -56,18 +58,22 @@ export function renderSavings() {
             <button class="pill danger goal-remove" data-del-goal="${g.id}" title="Remove goal">🗑</button>
           </div>
 
-          <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${g.target}" aria-valuenow="${g.saved}">
+          <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${g.target}" aria-valuenow="${saved}">
             <div class="progress-fill" style="width:${pct}%; background:${sliceColor(i)}"></div>
           </div>
 
           <div class="goal-stats">
             <span>Min: $0</span>
-            <span>Saved: $${fmt(g.saved)}</span>
+            <span>Saved: $${fmt(saved)}</span>
             <span>Max: $${fmt(g.target)}</span>
           </div>
         </div>`;
         })
         .join('');
 
-    drawLineChart($('#lineChart'), extendHistoryToCurrent(state.savingsHistory));
+    $('#goalsEmpty').hidden = state.goals.length > 0;
+    $('#openAddSaving').disabled = state.goals.length === 0;
+    $('#savedTotal').textContent = `$${fmt(totalSaved(state))}`;
+
+    drawLineChart($('#lineChart'), savingsSeries(state));
 }

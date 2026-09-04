@@ -1,328 +1,420 @@
 <!doctype html>
 <html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>BudgetBud</title>
+        <meta name="description" content="A budgeting app for tracking spending, bills, and savings goals." />
+    </head>
 
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>BudgetBud</title>
-    <meta name="description" content="A budgeting app for tracking spending, bills, and savings goals." />
-</head>
-
-<body>
-    <div class="device" id="device">
-        <div class="content">
-            <div class="header">
-                <h1 id="title">BudgetBud</h1>
-                <div class="row">
-                    <button class="btn outline" id="exportBtn" title="Export CSV">Export</button>
-                    <button class="btn" id="addBtn" title="Add Expense">Add</button>
+    <body>
+        <div class="device" id="device">
+            <div class="content">
+                <div class="header">
+                    <h1 id="title">BudgetBud</h1>
+                    <div class="row">
+                        <button class="btn outline" id="exportBtn" title="Export CSV">Export</button>
+                        <button class="btn" id="addBtn" title="Add Expense">Add</button>
+                    </div>
                 </div>
-            </div>
 
-            <div class="wrap" id="screen-home" role="region" aria-label="Home screen">
-                <div class="cards">
+                <div class="wrap" id="screen-home" role="region" aria-label="Home screen">
+                    <div class="card demo-banner" id="demoBanner" hidden>
+                        <div>
+                            <strong>This app is empty.</strong>
+                            <div class="subtle">
+                                Load a month of sample transactions, bills, and goals to explore it.
+                            </div>
+                        </div>
+                        <button class="btn" id="loadDemoBtn">Load demo data</button>
+                    </div>
+                    <div class="cards">
+                        <div class="card">
+                            <div class="subtle">Total Balance</div>
+                            <div class="value" id="totalBalance">$0</div>
+                        </div>
+
+                        <div class="card">
+                            <div class="row" style="justify-content: space-between; align-items: center">
+                                <div>
+                                    <div class="subtle">Budget Used</div>
+                                    <div class="value"><span id="budgetPct">0</span>%</div>
+                                </div>
+                                <button class="pill small" id="editBudgetBtn" title="Edit monthly budget">
+                                    Edit Budget
+                                </button>
+                            </div>
+                            <div class="progress-wrap" aria-label="Monthly budget progress">
+                                <div
+                                    class="progress-bar"
+                                    id="budgetProgress"
+                                    role="progressbar"
+                                    aria-valuemin="0"
+                                    aria-valuemax="3000"
+                                    aria-valuenow="0"
+                                >
+                                    <div class="progress-fill" id="budgetBar" style="width: 0%"></div>
+                                </div>
+                                <div class="note" id="remainingNote">$0 left</div>
+                            </div>
+                        </div>
+
+                        <div class="card" style="grid-column: span 2">
+                            <div
+                                class="row bills-header"
+                                style="justify-content: space-between; align-items: center"
+                            >
+                                <div>
+                                    <div class="subtle">Upcoming Bills</div>
+                                    <div class="value" id="billsCount">0 due</div>
+                                </div>
+                                <button class="pill" id="openAddBill">Add Bill</button>
+                            </div>
+                            <div class="hr bills-hr"></div>
+                            <div class="scroll" id="billsList"></div>
+                            <div class="empty" id="billsEmpty" hidden>No bills tracked yet.</div>
+                        </div>
+                    </div>
+
+                    <h2 class="section-title">Spending by Category</h2>
                     <div class="card">
-                        <div class="subtle">Total Balance</div>
-                        <div class="value" id="totalBalance">$0</div>
+                        <div
+                            class="row"
+                            style="justify-content: space-between; align-items: center; margin-bottom: 8px"
+                        >
+                            <div class="note">
+                                View: <span id="periodLabel">Month</span> (<span id="periodRange"></span>)
+                            </div>
+                            <div class="row" style="gap: 8px">
+                                <button class="pill" id="prevPeriod" title="Previous">◀</button>
+                                <button class="pill" id="togglePeriod">Toggle Day/Month</button>
+                                <button class="pill" id="nextPeriod" title="Next">▶</button>
+                            </div>
+                        </div>
+
+                        <div class="spending-chart-container">
+                            <div class="pie-container">
+                                <svg id="pie" width="260" height="260" viewBox="0 0 300 300"></svg>
+                            </div>
+                            <div class="legend-container">
+                                <div id="category-legend"></div>
+                                <div class="hint" style="margin-top: 15px">
+                                    Values shown with leader lines; each slice labeled with
+                                    <strong>%</strong>.
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
+                    <h2 class="section-title">Recent Transactions</h2>
                     <div class="card">
-                        <div class="row" style="justify-content:space-between; align-items:center;">
-                            <div>
-                                <div class="subtle">Budget Used</div>
-                                <div class="value"><span id="budgetPct">0</span>%</div>
+                        <div class="scroll">
+                            <table aria-label="Recent transactions">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Name</th>
+                                        <th>Category</th>
+                                        <th class="right">Amount ($)</th>
+                                        <th class="actions"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="recentTbody"></tbody>
+                            </table>
+                        </div>
+                        <div class="empty" id="recentEmpty" hidden>
+                            Nothing logged yet. Tap <strong>Add</strong> to record your first transaction.
+                        </div>
+                    </div>
+                    <div class="data-tools">
+                        <button class="pill" id="clearDataBtn">Clear all data</button>
+                    </div>
+                </div>
+
+                <div
+                    class="wrap"
+                    id="screen-transactions"
+                    role="region"
+                    aria-label="Transactions screen"
+                    hidden
+                >
+                    <div class="row" style="margin-bottom: 10px">
+                        <input
+                            type="text"
+                            id="search"
+                            placeholder="Search by name or category"
+                            aria-label="Search transactions"
+                        />
+                    </div>
+                    <div class="row" style="margin-bottom: 10px">
+                        <select id="catFilter" aria-label="Filter by category">
+                            <option value="">All categories</option>
+                        </select>
+                        <button class="pill" id="sortBtn" title="Sort by date/amount">Sort</button>
+                    </div>
+                    <div class="card">
+                        <div class="scroll">
+                            <table aria-label="Transactions table">
+                                <thead>
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Name</th>
+                                        <th>Category</th>
+                                        <th class="right">Amount ($)</th>
+                                        <th class="actions"></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="txTbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="empty" id="txEmpty" hidden></div>
+                    <div class="hint" id="resultCount">0 results</div>
+                </div>
+
+                <div class="wrap" id="screen-savings" role="region" aria-label="Savings screen" hidden>
+                    <div class="row" style="margin-bottom: 10px">
+                        <button class="btn outline" id="openAddSaving">Add Saving</button>
+                        <button class="btn outline" id="openNewGoal">New Goal</button>
+                    </div>
+                    <div id="goals"></div>
+                    <div class="empty" id="goalsEmpty" hidden>
+                        No savings goals yet. Tap <strong>New Goal</strong> to set a target.
+                    </div>
+                    <h2 class="section-title">
+                        Savings Over Time
+                        <span class="section-total">Total saved: <strong id="savedTotal">$0</strong></span>
+                    </h2>
+                    <div class="card">
+                        <div class="chart-container">
+                            <svg
+                                id="lineChart"
+                                width="100%"
+                                height="220"
+                                viewBox="0 0 550 220"
+                                preserveAspectRatio="xMinYMin meet"
+                                aria-label="Savings over time line chart"
+                            ></svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bottom" role="tablist" aria-label="Primary">
+                <div class="tab active" data-tab="home" role="tab" aria-selected="true">
+                    <div class="dot"></div>
+                    <span>Home</span>
+                </div>
+                <div class="tab" data-tab="transactions" role="tab" aria-selected="false">
+                    <div class="dot"></div>
+                    <span>Transactions</span>
+                </div>
+                <div class="tab" data-tab="add" role="tab" aria-selected="false">
+                    <div class="dot"></div>
+                    <span>Add</span>
+                </div>
+                <div class="tab" data-tab="savings" role="tab" aria-selected="false">
+                    <div class="dot"></div>
+                    <span>Savings</span>
+                </div>
+            </div>
+
+            <div class="modal-backdrop" id="modalAdd">
+                <div class="modal" role="dialog" aria-modal="true">
+                    <div class="grab"></div>
+                    <div class="titlebar">
+                        <h2 id="addModalTitle">Add Transaction</h2>
+                        <button class="x" data-close="modalAdd">✕</button>
+                    </div>
+                    <form id="addForm">
+                        <div class="row">
+                            <div class="field">
+                                <label for="titleInput">Title</label>
+                                <input id="titleInput" type="text" placeholder="e.g., Coffee" required />
                             </div>
-                            <button class="pill small" id="editBudgetBtn" title="Edit monthly budget">Edit
-                                Budget</button>
-                        </div>
-                        <div class="progress-wrap" aria-label="Monthly budget progress">
-                            <div class="progress-bar" id="budgetProgress" role="progressbar" aria-valuemin="0"
-                                aria-valuemax="3000" aria-valuenow="0">
-                                <div class="progress-fill" id="budgetBar" style="width:0%"></div>
-                            </div>
-                            <div class="note" id="remainingNote">$0 left</div>
-                        </div>
-                    </div>
-
-                    <div class="card" style="grid-column: span 2;">
-                        <div class="row bills-header" style="justify-content:space-between; align-items:center;">
-                            <div>
-                                <div class="subtle">Upcoming Bills</div>
-                                <div class="value" id="billsCount">0 due</div>
-                            </div>
-                            <button class="pill" id="openAddBill">Add Bill</button>
-                        </div>
-                        <div class="hr bills-hr"></div>
-                        <div class="scroll" id="billsList"></div>
-                    </div>
-                </div>
-
-                <h2 class="section-title">Spending by Category</h2>
-                <div class="card">
-                    <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <div class="note">
-                            View: <span id="periodLabel">Month</span>
-                            (<span id="periodRange"></span>)
-                        </div>
-                        <div class="row" style="gap:8px;">
-                            <button class="pill" id="prevPeriod" title="Previous">◀</button>
-                            <button class="pill" id="togglePeriod">Toggle Day/Month</button>
-                            <button class="pill" id="nextPeriod" title="Next">▶</button>
-                        </div>
-                    </div>
-
-                    <div class="spending-chart-container">
-                        <div class="pie-container">
-                            <svg id="pie" width="260" height="260" viewBox="0 0 300 300"></svg>
-                        </div>
-                        <div class="legend-container">
-                            <div id="category-legend"></div>
-                            <div class="hint" style="margin-top: 15px;">
-                                Values shown with leader lines; each slice labeled with <strong>%</strong>.
+                            <div class="field">
+                                <label for="amountInput">Amount ($)</label>
+                                <input
+                                    id="amountInput"
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="-4.50 (expense) or 200.00 (income)"
+                                    required
+                                />
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                <h2 class="section-title">Recent Transactions</h2>
-                <div class="card">
-                    <div class="scroll">
-                        <table aria-label="Recent transactions">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Name</th>
-                                    <th>Category</th>
-                                    <th class="right">Amount ($)</th>
-                                    <th class="actions"> </th>
-                                </tr>
-                            </thead>
-                            <tbody id="recentTbody"></tbody>
-                        </table>
-                    </div>
+                        <div class="row" style="margin-top: 10px">
+                            <div class="field">
+                                <label for="categoryInput">Category</label>
+                                <select id="categoryInput"></select>
+                                <input
+                                    id="newCategoryInput"
+                                    type="text"
+                                    placeholder="New category name"
+                                    style="margin-top: 8px"
+                                    hidden
+                                />
+                            </div>
+                            <div class="field">
+                                <label for="dateInput">Date</label>
+                                <input id="dateInput" type="date" />
+                            </div>
+                        </div>
+                        <div class="field" style="margin-top: 10px">
+                            <label for="noteInput">Notes (optional)</label>
+                            <textarea id="noteInput" placeholder="Add a short note"></textarea>
+                        </div>
+                        <div class="row" style="margin-top: 12px">
+                            <button class="btn" type="submit" id="addSubmitBtn">Add</button>
+                            <button class="btn gray" type="button" id="clearBtn">Clear</button>
+                            <button class="btn ghost" type="button" data-close="modalAdd">Cancel</button>
+                        </div>
+                        <div class="hint">
+                            Tip: Use negative for expenses (e.g., -15.99), positive for income.
+                        </div>
+                    </form>
                 </div>
             </div>
 
-            <div class="wrap" id="screen-transactions" role="region" aria-label="Transactions screen" hidden>
-                <div class="row" style="margin-bottom:10px;">
-                    <input type="text" id="search" placeholder="Search by name or category"
-                        aria-label="Search transactions" />
-                </div>
-                <div class="row" style="margin-bottom:10px;">
-                    <select id="catFilter" aria-label="Filter by category">
-                        <option value="">All categories</option>
-                    </select>
-                    <button class="pill" id="sortBtn" title="Sort by date/amount">Sort</button>
-                </div>
-                <div class="card">
-                    <div class="scroll">
-                        <table aria-label="Transactions table">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Name</th>
-                                    <th>Category</th>
-                                    <th class="right">Amount ($)</th>
-                                    <th class="actions"> </th>
-                                </tr>
-                            </thead>
-                            <tbody id="txTbody"></tbody>
-                        </table>
+            <div class="modal-backdrop" id="modalAddSaving">
+                <div class="modal" role="dialog" aria-modal="true">
+                    <div class="grab"></div>
+                    <div class="titlebar">
+                        <h2>Add Saving</h2>
+                        <button class="x" data-close="modalAddSaving">✕</button>
                     </div>
+                    <form id="addSavingForm">
+                        <div class="row">
+                            <div class="field">
+                                <label for="goalSelect">Goal</label>
+                                <select id="goalSelect"></select>
+                            </div>
+                            <div class="field">
+                                <label for="saveAmount">Amount ($)</label>
+                                <input
+                                    id="saveAmount"
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="e.g., 50.00"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top: 12px">
+                            <button class="btn" type="submit">Add Saving</button>
+                            <button class="btn gray" type="button" data-close="modalAddSaving">Cancel</button>
+                        </div>
+                    </form>
                 </div>
-                <div class="hint" id="resultCount">0 results</div>
             </div>
 
-            <div class="wrap" id="screen-savings" role="region" aria-label="Savings screen" hidden>
-                <div class="row" style="margin-bottom:10px;">
-                    <button class="btn outline" id="openAddSaving">Add Saving</button>
-                    <button class="btn outline" id="openNewGoal">New Goal</button>
-                </div>
-                <div id="goals"></div>
-                <h2 class="section-title">Savings Over Time</h2>
-                <div class="card">
-                    <div class="chart-container">
-                        <svg id="lineChart" width="100%" height="220" viewBox="0 0 550 220"
-                            preserveAspectRatio="xMinYMin meet" aria-label="Savings over time line chart"></svg>
+            <div class="modal-backdrop" id="modalNewGoal">
+                <div class="modal" role="dialog" aria-modal="true">
+                    <div class="grab"></div>
+                    <div class="titlebar">
+                        <h2>New Goal</h2>
+                        <button class="x" data-close="modalNewGoal">✕</button>
                     </div>
+                    <form id="newGoalForm">
+                        <div class="row">
+                            <div class="field">
+                                <label for="goalName">Name</label>
+                                <input id="goalName" type="text" placeholder="Emergency Fund" required />
+                            </div>
+                            <div class="field">
+                                <label for="goalTarget">Target ($)</label>
+                                <input
+                                    id="goalTarget"
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="5000"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top: 10px">
+                            <div class="field">
+                                <label for="goalDue">Due Date</label>
+                                <input id="goalDue" type="date" required />
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top: 12px">
+                            <button class="btn" type="submit">Create Goal</button>
+                            <button class="btn gray" type="button" data-close="modalNewGoal">Cancel</button>
+                        </div>
+                    </form>
                 </div>
             </div>
-        </div>
 
-        <div class="bottom" role="tablist" aria-label="Primary">
-            <div class="tab active" data-tab="home" role="tab" aria-selected="true">
-                <div class="dot"></div><span>Home</span>
-            </div>
-            <div class="tab" data-tab="transactions" role="tab" aria-selected="false">
-                <div class="dot"></div><span>Transactions</span>
-            </div>
-            <div class="tab" data-tab="add" role="tab" aria-selected="false">
-                <div class="dot"></div><span>Add</span>
-            </div>
-            <div class="tab" data-tab="savings" role="tab" aria-selected="false">
-                <div class="dot"></div><span>Savings</span>
-            </div>
-        </div>
-
-        <div class="modal-backdrop" id="modalAdd">
-            <div class="modal" role="dialog" aria-modal="true">
-                <div class="grab"></div>
-                <div class="titlebar">
-                    <h2>Add Transaction</h2>
-                    <button class="x" data-close="modalAdd">✕</button>
+            <div class="modal-backdrop" id="modalAddBill">
+                <div class="modal" role="dialog" aria-modal="true">
+                    <div class="grab"></div>
+                    <div class="titlebar">
+                        <h2>Add Bill</h2>
+                        <button class="x" data-close="modalAddBill">✕</button>
+                    </div>
+                    <form id="addBillForm">
+                        <div class="row">
+                            <div class="field">
+                                <label for="billName">Name</label>
+                                <input id="billName" type="text" placeholder="Rent" required />
+                            </div>
+                            <div class="field">
+                                <label for="billAmount">Amount ($)</label>
+                                <input
+                                    id="billAmount"
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="1200"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top: 10px">
+                            <div class="field">
+                                <label for="billDue">Due Date</label>
+                                <input id="billDue" type="date" required />
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top: 12px">
+                            <button class="btn" type="submit">Add Bill</button>
+                            <button class="btn gray" type="button" data-close="modalAddBill">Cancel</button>
+                        </div>
+                    </form>
                 </div>
-                <form id="addForm">
-                    <div class="row">
-                        <div class="field">
-                            <label for="titleInput">Title</label>
-                            <input id="titleInput" type="text" placeholder="e.g., Coffee" required />
-                        </div>
-                        <div class="field">
-                            <label for="amountInput">Amount ($)</label>
-                            <input id="amountInput" type="number" step="0.01"
-                                placeholder="-4.50 (expense) or 200.00 (income)" required />
-                        </div>
-                    </div>
-                    <div class="row" style="margin-top:10px;">
-                        <div class="field">
-                            <label for="categoryInput">Category</label>
-                            <select id="categoryInput"></select>
-                        </div>
-                        <div class="field">
-                            <label for="dateInput">Date</label>
-                            <input id="dateInput" type="date" />
-                        </div>
-                    </div>
-                    <div class="field" style="margin-top:10px;">
-                        <label for="noteInput">Notes (optional)</label>
-                        <textarea id="noteInput" placeholder="Add a short note"></textarea>
-                    </div>
-                    <div class="row" style="margin-top:12px;">
-                        <button class="btn" type="submit">Add</button>
-                        <button class="btn gray" type="button" id="clearBtn">Clear</button>
-                        <button class="btn ghost" type="button" data-close="modalAdd">Cancel</button>
-                    </div>
-                    <div class="hint">Tip: Use negative for expenses (e.g., -15.99), positive for income.</div>
-                </form>
             </div>
-        </div>
 
-        <div class="modal-backdrop" id="modalAddSaving">
-            <div class="modal" role="dialog" aria-modal="true">
-                <div class="grab"></div>
-                <div class="titlebar">
-                    <h2>Add Saving</h2>
-                    <button class="x" data-close="modalAddSaving">✕</button>
+            <div class="modal-backdrop" id="modalEditBudget">
+                <div class="modal" role="dialog" aria-modal="true">
+                    <div class="grab"></div>
+                    <div class="titlebar">
+                        <h2>Edit Monthly Budget</h2>
+                        <button class="x" data-close="modalEditBudget">✕</button>
+                    </div>
+                    <form id="editBudgetForm">
+                        <div class="row">
+                            <div class="field">
+                                <label for="budgetInput">Monthly Budget ($)</label>
+                                <input
+                                    id="budgetInput"
+                                    type="number"
+                                    step="1"
+                                    min="0"
+                                    placeholder="3000"
+                                    required
+                                />
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top: 12px">
+                            <button class="btn" type="submit">Save</button>
+                            <button class="btn gray" type="button" data-close="modalEditBudget">
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
                 </div>
-                <form id="addSavingForm">
-                    <div class="row">
-                        <div class="field">
-                            <label for="goalSelect">Goal</label>
-                            <select id="goalSelect"></select>
-                        </div>
-                        <div class="field">
-                            <label for="saveAmount">Amount ($)</label>
-                            <input id="saveAmount" type="number" step="0.01" placeholder="e.g., 50.00" required />
-                        </div>
-                    </div>
-                    <div class="row" style="margin-top:12px;">
-                        <button class="btn" type="submit">Add Saving</button>
-                        <button class="btn gray" type="button" data-close="modalAddSaving">Cancel</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-        <div class="modal-backdrop" id="modalNewGoal">
-            <div class="modal" role="dialog" aria-modal="true">
-                <div class="grab"></div>
-                <div class="titlebar">
-                    <h2>New Goal</h2>
-                    <button class="x" data-close="modalNewGoal">✕</button>
-                </div>
-                <form id="newGoalForm">
-                    <div class="row">
-                        <div class="field">
-                            <label for="goalName">Name</label>
-                            <input id="goalName" type="text" placeholder="Emergency Fund" required />
-                        </div>
-                        <div class="field">
-                            <label for="goalTarget">Target ($)</label>
-                            <input id="goalTarget" type="number" step="0.01" placeholder="5000" required />
-                        </div>
-                    </div>
-                    <div class="row" style="margin-top:10px;">
-                        <div class="field">
-                            <label for="goalDue">Due Date</label>
-                            <input id="goalDue" type="date" required />
-                        </div>
-                    </div>
-                    <div class="row" style="margin-top:12px;">
-                        <button class="btn" type="submit">Create Goal</button>
-                        <button class="btn gray" type="button" data-close="modalNewGoal">Cancel</button>
-                    </div>
-                </form>
             </div>
         </div>
-
-
-        <div class="modal-backdrop" id="modalAddBill">
-            <div class="modal" role="dialog" aria-modal="true">
-                <div class="grab"></div>
-                <div class="titlebar">
-                    <h2>Add Bill</h2>
-                    <button class="x" data-close="modalAddBill">✕</button>
-                </div>
-                <form id="addBillForm">
-                    <div class="row">
-                        <div class="field">
-                            <label for="billName">Name</label>
-                            <input id="billName" type="text" placeholder="Rent" required />
-                        </div>
-                        <div class="field">
-                            <label for="billAmount">Amount ($)</label>
-                            <input id="billAmount" type="number" step="0.01" placeholder="1200" required />
-                        </div>
-                    </div>
-                    <div class="row" style="margin-top:10px;">
-                        <div class="field">
-                            <label for="billDue">Due Date</label>
-                            <input id="billDue" type="date" required />
-                        </div>
-                    </div>
-                    <div class="row" style="margin-top:12px;">
-                        <button class="btn" type="submit">Add Bill</button>
-                        <button class="btn gray" type="button" data-close="modalAddBill">Cancel</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-
-        <div class="modal-backdrop" id="modalEditBudget">
-            <div class="modal" role="dialog" aria-modal="true">
-                <div class="grab"></div>
-                <div class="titlebar">
-                    <h2>Edit Monthly Budget</h2>
-                    <button class="x" data-close="modalEditBudget">✕</button>
-                </div>
-                <form id="editBudgetForm">
-                    <div class="row">
-                        <div class="field">
-                            <label for="budgetInput">Monthly Budget ($)</label>
-                            <input id="budgetInput" type="number" step="1" min="0" placeholder="3000" required />
-                        </div>
-                    </div>
-                    <div class="row" style="margin-top:12px;">
-                        <button class="btn" type="submit">Save</button>
-                        <button class="btn gray" type="button" data-close="modalEditBudget">Cancel</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-
-    </div>
-    <script type="module" src="/src/main.js"></script>
-</body>
-
+        <script type="module" src="/src/main.js"></script>
+    </body>
 </html>

@@ -3,7 +3,7 @@
  * user's data; state is now mirrored into localStorage on every mutation.
  */
 
-import { createDefaultState, replaceState, state } from './state.js';
+import { SCHEMA_VERSION, createDefaultState, migrate, replaceState, state } from './state.js';
 
 const KEY = 'budgetbud.state.v1';
 
@@ -11,9 +11,14 @@ export function load() {
     try {
         const raw = localStorage.getItem(KEY);
         if (!raw) return replaceState(createDefaultState());
-        // Merge over defaults so a state saved by an older build still loads.
+
         const parsed = JSON.parse(raw);
-        return replaceState({ ...createDefaultState(), ...parsed });
+        // migrate() also fills in anything a newer build added.
+        const next = replaceState(migrate(parsed));
+        // Write the upgraded shape back straight away, so what is on disk never
+        // lags the schema the code expects.
+        if (parsed.version !== SCHEMA_VERSION) save();
+        return next;
     } catch {
         return replaceState(createDefaultState());
     }
@@ -35,3 +40,11 @@ export function clear() {
     }
     return replaceState(createDefaultState());
 }
+
+export const hasSavedState = () => {
+    try {
+        return localStorage.getItem(KEY) !== null;
+    } catch {
+        return false;
+    }
+};

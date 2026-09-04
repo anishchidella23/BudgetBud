@@ -15,15 +15,11 @@ describe('formatting', () => {
 
 describe('escapeHtml', () => {
     it('neutralises markup in user-supplied text', () => {
-        expect(escapeHtml('<img src=x onerror=alert(1)>')).toBe(
-            '&lt;img src=x onerror=alert(1)&gt;'
-        );
+        expect(escapeHtml('<img src=x onerror=alert(1)>')).toBe('&lt;img src=x onerror=alert(1)&gt;');
     });
 
     it('escapes quotes and ampersands', () => {
-        expect(escapeHtml(`Ben & Jerry's "Half Baked"`)).toBe(
-            'Ben &amp; Jerry&#39;s &quot;Half Baked&quot;'
-        );
+        expect(escapeHtml(`Ben & Jerry's "Half Baked"`)).toBe('Ben &amp; Jerry&#39;s &quot;Half Baked&quot;');
     });
 
     it('renders nullish values as empty', () => {
